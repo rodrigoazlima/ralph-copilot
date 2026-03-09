@@ -1,4 +1,5 @@
 #requires -Version 5.1
+
 param(
     [string]$Prompt,
     [int]$Max,
@@ -10,8 +11,21 @@ param(
 
 Set-StrictMode -Version Latest
 
+# Clear console
+try {
+    clear
+}
+catch {}
+
+$Script:Prompt = $Prompt
+$Script:Max = $Max
+$Script:Workdir = $Workdir
+$Script:Model = $Model
+$Script:prdJson = $prdJson
+$Script:Force = $Force
+
 function Get-UserStorystatus {
-    $prdPath = $script:prdPath
+    $prdPath = $Script:prdPath
 
     if (-not (Test-Path $prdPath)) {
         return @{
@@ -24,7 +38,8 @@ function Get-UserStorystatus {
     }
 
     try {
-        $prdData = Get-Content -Path SprdPath -Raw | ConvertFrom-Json
+        $prdData = Get-Content -Path $prdPath -Raw | ConvertFrom-Json
+        Write-Host $prdData -ForegroundColor DarkGreen
     }
     catch {
         return @{
@@ -71,32 +86,138 @@ function Get-UserStorystatus {
     }
 }
 
-function Test-AllTasksComplete {}
+function Test-AllTasksComplete {
+    return (Get-UserStorystatus).AllComplete
+}
 
-function GetCopilotPrompt {}
+function GetPromptText {
+    Write-Host "Loading prompt $Script:Prompt" -ForegroundColor White
+    $promptPath = Join-Path -Path $Workdir -ChildPath [string]$Script:Prompt
+    if (-not (Test-Path $promptPath)) {
+        Write-Host "Using prompt: " -ForegroundColor White
+        return [string]$Prompt
+    }
+    return Get-Content -Path $Script:prdPath -Raw
+}
 
-function Show-ExecutionReport {}
+function Show-ExecutionReport {
+    param(
+        [TimeSpan]$TotalDuration,
+        [int]$TotalAttempts,
+        [int]$SuccessfulAttempts,
+        [int]$FailedAttempts,
+        [array]$AttemptTimings,
+        [bool]$AllTasksComplete,
+        [int]$FinalExitCode,
+        [string]$Model,
+        [int]$MaxAttempts
+    )
+
+    Write-Host "`n" -NoNewline
+    Write-Host "================================================================================================" -ForegroundColor Cyan
+    Write-Host "====================================== EXECUTION REPORT ========================================" -ForegroundColor Cyan
+    Write-Host "================================================================================================" -ForegroundColor Cyan
+    
+    # Overall Status
+    Write-Host "`n[OVERALL STATUS]" -ForegroundColor Cyan
+    Write-Host "    Status:" -ForegroundColor Cyan
+    if ($AllTasksComplete) {
+        Write-Host "SUCCESS - All user stories completed" -ForegroundColor Cyan
+    }
+    elseif ($TotalAttempts -ge $MaxAttempts) {
+        Write-Host "INCOMPLETE - Maximum attempts reached" -ForegroundColor Yellow
+    }
+    else {
+        Write-Host "FAILED - Execution stopped early" -ForegroundColor Red
+    }
+    
+    Write-Host "  Exit Code: $FinalExitCode" -ForegroundColor White
+
+    # Execution Benchmarks
+    Write-Host "`n[EXECUTION BENCHMARKS]" - ForegroundColor White
+    Write-Host "  Total Duration: $($TotalDuration.Hours)h $($TotalDuration.Minutes)m $($TotalDuration.Seconds)s $($TotalDuration.Milliseconds)ms" -ForegroundColor Gray
+    Write-Host "  Total Attempts: $TotalAttempts / $MaxAttempts" -ForegroundColor Gray
+    Write-Host "  Successful Attempts: $SuccessfulAttempts" -ForegroundColor $(if ($SuccessfulAttempts -gt 0) { 'Green' } else { 'Gray' })
+    Write-Host "  Failed Attempts: $FailedAttempts" -ForegroundColor $(if ($FailedAttempts -gt 0) { 'Red' } else { 'Gray' })
+    if ($TotalAttempts -gt 0) {
+        $avgTime = [timespan]::FromMilliseconds(($AttemptTimings | Measure-Object -Average).Average)
+        $minTime = [timespan]::FromMilliseconds(($AttemptTimings | Measure-Object -Minimum).Minimum)
+        $maxTime = [timespan]::FromMilliseconds(($AttemptTimings |  Measure-Object -Maximum).Maximum)
+        Write-Host "  Average Attempt: $(SavgTime.Minutes)m $(SavgTime.Seconds)s $($avgTime.Milliseconds)ms" -ForegroundColor Gray
+        Write-Host "  Fastest Attempt: $($minTime.Minutes)m $($minTime.Seconds)s $($minTime.Milliseconds)ms" -ForegroundColor Gray
+        Write-Host "  Slowest Attempt: $($maxTime.Minutes)m $($maxTime.Seconds)s $($maxTime.Milliseconds)ms" -ForegroundColor Gray
+    }
+
+    # Model Configuration
+    Write-Host "`n[CONFIGURATION]" -ForegroundColor White 
+    Write-Host "  Model: $Model" -ForegroundColor Gray
+    Write-Host "  Working Directory: $absoluteWorkDir" -ForegroundColor Gray
+
+    # User Stories Status
+    $storyStatus = Get-UserStoryStatus
+    Write-Host "`n[USER STORIES]" -ForegroundColor White 
+    Write-Host "  Total Stories: $($storyStatus.TotalStories)" -ForegroundColor Gray
+    Write-Host "  Passed: $($storyStatus. PassedStories)" -ForegroundColor Green
+    Write-Host "  Failed: $($storyStatus.FailedStories)" -ForegroundColor $(if ($storyStatus. FailedStories -gt 0) { 'Red' } else { 'Gray' })
+
+    
+    if ($storyStatus.TotalStories -gt 0) {
+        $completionRate = [math]::Round(($storyStatus.PassedStories / $storyStatus.TotalStories) * 100, 2)
+        Write-Host "  Completion Rate: $completionRate%" -ForegroundColor $(if ($completionRate -eq 100) { 'Green' } elseif ($completionRate -gt 50) { 'Yellow' } else { 'Red' })
+        Write-Host "`n  Story Details:" -ForegroundColor Gray
+        foreach ($story in $storyStatus.Stories) {
+            $statusIcon = if ($story.Passes) { "[PASS]" } else { "[FAIL]" }
+            $statusColor = if ($story.Passes) { 'Green' } else { 'Red' }
+            Write-Host "$statusIcon"-NoNewline -ForegroundColor $statusColor
+            Write-Host "$($story.Id); $($story.Title)" -ForegroundColor Gray
+        }
+    }
+    Write-Host "`n================================================================================================" -ForegroundColor Cyan
+    Write-Host ""
+}
+function ValidateCopilotExecutable {
+    $invalidPattern = "vscode|visual studio code|intellij|jetbrains|pycharm|webstorm|rider|clion|goland"
+
+    $copilotPaths = Get-ChildItem "$env:LOCALAPPDATA", "$env:PROGRAMFILES", "$env:PROGRAMFILES(x86)" -Recurse -ErrorAction SilentlyContinue |
+    Where-Object { $_.FullName -match "copilot" } |
+    Select-Object -ExpandProperty FullName
+
+    foreach ($path in $copilotPaths) {
+        if ($path -match $invalidPattern) {
+            Write-Error "Copilot installation detected inside an unsupported IDE path: $path"
+            exit 1
+        }
+    }
+
+    Write-Output "Copilot paths are acceptable."
+}
 
 function Main {
-    
     # Validate current directory
     $absoluteWorkdir = [System.IO.Path]::GetFullPath((Join-Path -Path (Get-Location) -ChildPath $Workdir))
     if (-not (Test-Path -Path $absoluteWorkdir)) {
         Write-Host "Workdir path not found at $absoluteWorkdir" -ForegroundColor Red
-        exit 0
+        exit 1
     }
     Write-Host "Set current directory to $absoluteWorkdir" -ForegroundColor White
     Set-Location -Path $absoluteWorkdir
 
     # Initialize global variables
-    $Script:copilotCmd = "copilot"
-    $Script:copilotModel = $Model
-    $Script:prdPath = Join-Path -Path $absoluteWorkdir -ChildPath $prdJson
+    ValidateCopilotExecutable
+    $cmd = Get-Command copilot -ErrorAction SilentlyContinue
+    if (-not $cmd) {
+        Write-Host "ERROR: copilot executable not found" -ForegroundColor Red
+        Write-Host "Please install GitHub Copilot CLI:" -ForegroundColor Yellow
+        Write-Host "  npm install -g @github/copilot" -ForegroundColor Yellow
+        exit 1
+    }
+    $Script:copilotModel = $Script:Model
+    $Script:prdPath = Join-Path -Path $absoluteWorkdir -ChildPath $Script:prdJson
 
     # Validate prd.json
     if (-not (Test-Path -Path $Script:prdPath)) {
         Write-Host "prd.json not found at $($Script:prdPath)" -ForegroundColor Red
-        exit 0
+        exit 1
     }
 
     # Ensure progress state files exist, if not create them
@@ -109,7 +230,7 @@ function Main {
         }
         catch {
             Write-Host "Failed to reset progress state: $_" -ForegroundColor Red
-            exit 0
+            exit 1
         }
     }
     else {
@@ -121,18 +242,18 @@ function Main {
         }
         catch {
             Write-Host "Failed to create state files: $_" -ForegroundColor Red
-            exit 0
+            exit 1
         }
     }
 
     # Set Copilot Prompt for use in the main loop
     try {
-        $Script:copilotPrompt = GetCopilotPrompt -Workdir $absoluteWorkdir
+        $Script:copilotPrompt = GetPromptText
         Write-Host "Successfully set Copilot Prompt: $Script:copilotPrompt" -ForegroundColor White
     }
     catch {
         Write-Host "Failed to set Copilot Prompt: $_" -ForegroundColor Red
-        exit 0
+        exit 1
     }
 
     # Initialize execution tracking variables
@@ -197,15 +318,15 @@ function Main {
     Show-ExecutionReport `
         -TotalDuration $totalDuration `
         -TotalAttempts $attempt `
-        -SuccessfulAttempts -successfulAttempts `
+        -SuccessfulAttempts $successfulAttempts `
         -FailedAttempts $returnErrorCodeCounter `
-        -AttemptsTimmings $attempt `
+        -AttemptTimings $attemptTimings `
         -AllTasksComplete $allTasksComplete `
         -FinalExitCode $returnCode `
         -Model $Script:copilotModel `
-        -MaxAttempts $Script:Max `
+        -MaxAttempts $Script:Max
 
-    exit $returnCode
+    exit 0
 }
 
 Main
