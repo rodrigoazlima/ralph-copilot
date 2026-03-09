@@ -91,10 +91,10 @@ function Test-AllTasksComplete {
 }
 
 function GetPromptText {
-    Write-Host "Loading prompt $Script:Prompt" -ForegroundColor White
+    Write-Host "Loading prompt $Script:Prompt"
     $promptPath = Join-Path -Path $Workdir -ChildPath [string]$Script:Prompt
     if (-not (Test-Path $promptPath)) {
-        Write-Host "Using prompt: " -ForegroundColor White
+        Write-Host "Using prompt: "
         return [string]$Prompt
     }
     return Get-Content -Path $Script:prdPath -Raw
@@ -131,7 +131,7 @@ function Show-ExecutionReport {
         Write-Host "FAILED - Execution stopped early" -ForegroundColor Red
     }
     
-    Write-Host "  Exit Code: $FinalExitCode" -ForegroundColor White
+    Write-Host "  Exit Code: $FinalExitCode"
 
     # Execution Benchmarks
     Write-Host "`n[EXECUTION BENCHMARKS]" - ForegroundColor White
@@ -149,13 +149,13 @@ function Show-ExecutionReport {
     }
 
     # Model Configuration
-    Write-Host "`n[CONFIGURATION]" -ForegroundColor White 
+    Write-Host "`n[CONFIGURATION]" 
     Write-Host "  Model: $Model" -ForegroundColor Gray
     Write-Host "  Working Directory: $absoluteWorkDir" -ForegroundColor Gray
 
     # User Stories Status
     $storyStatus = Get-UserStoryStatus
-    Write-Host "`n[USER STORIES]" -ForegroundColor White 
+    Write-Host "`n[USER STORIES]" 
     Write-Host "  Total Stories: $($storyStatus.TotalStories)" -ForegroundColor Gray
     Write-Host "  Passed: $($storyStatus. PassedStories)" -ForegroundColor Green
     Write-Host "  Failed: $($storyStatus.FailedStories)" -ForegroundColor $(if ($storyStatus. FailedStories -gt 0) { 'Red' } else { 'Gray' })
@@ -175,50 +175,74 @@ function Show-ExecutionReport {
     Write-Host "`n================================================================================================" -ForegroundColor Cyan
     Write-Host ""
 }
-function ValidateCopilotExecutable {
-    $invalidPattern = "vscode|visual studio code|intellij|jetbrains|pycharm|webstorm|rider|clion|goland"
 
-    $copilotPaths = Get-ChildItem "$env:LOCALAPPDATA", "$env:PROGRAMFILES", "$env:PROGRAMFILES(x86)" -Recurse -ErrorAction SilentlyContinue |
-    Where-Object { $_.FullName -match "copilot" } |
-    Select-Object -ExpandProperty FullName
+function Get-CopilotPath {
+    [CmdletBinding()]
+    param()
 
-    foreach ($path in $copilotPaths) {
-        if ($path -match $invalidPattern) {
-            Write-Error "Copilot installation detected inside an unsupported IDE path: $path"
-            exit 1
-        }
+    $invalidPattern = "\\Code\\|vscode|visual studio code|intellij|jetbrains|pycharm|webstorm|rider|clion|goland"
+
+    Write-Debug "Searching copilot command using where.exe"
+
+    $paths = where.exe copilot 2>$null
+
+    if (-not $paths) {
+        Write-Debug "No copilot command returned by where.exe"
     }
 
-    Write-Output "Copilot paths are acceptable."
+    foreach ($p in $paths) {
+        Write-Debug "Candidate path detected: $p"
+
+        if ($p -match $invalidPattern) {
+            Write-Debug "Rejected path (IDE plugin detected): $p"
+            continue
+        }
+
+        Write-Debug "Accepted copilot path: $p"
+        return $p
+    }
+
+    Write-Debug "No valid copilot command found after filtering"
+    Write-Error "No valid Copilot command found outside IDE plugin paths."
+    Write-Error "Please install GitHub Copilot CLI:" -ForegroundColor Yellow
+    Write-Error "  > npm install -g @github/copilot" -ForegroundColor Yellow
+    exit 1
 }
 
 function Main {
+    Write-Host "  _____       _       _        _____            _ _       _   "
+    Write-Host " |  __ \     | |     | |      / ____|          (_) |     | |  "
+    Write-Host " | |__) |__ _| |_ __ | |__   | |     ___  _ __  _| | ___ | |_ "
+    Write-Host " |  _  // _` | | '_ \| '_ \  | |    / _ \| '_ \| | |/ _ \| __|"
+    Write-Host " | | \ \ (_| | | |_) | | | | | |___| (_) | |_) | | | (_) | |_ "
+    Write-Host " |_|  \_\__,_|_| .__/|_| |_|  \_____\___/| .__/|_|_|\___/ \__|"
+    Write-Host "               | |                       | |                  "
+    Write-Host "               |_|                       |_|                  "
+    Write-Host ""
+
     # Validate current directory
     $absoluteWorkdir = [System.IO.Path]::GetFullPath((Join-Path -Path (Get-Location) -ChildPath $Workdir))
     if (-not (Test-Path -Path $absoluteWorkdir)) {
         Write-Host "Workdir path not found at $absoluteWorkdir" -ForegroundColor Red
         exit 1
     }
-    Write-Host "Set current directory to $absoluteWorkdir" -ForegroundColor White
+    Write-Host "Set current directory to $absoluteWorkdir"
     Set-Location -Path $absoluteWorkdir
 
-    # Initialize global variables
-    ValidateCopilotExecutable
-    $cmd = Get-Command copilot -ErrorAction SilentlyContinue
-    if (-not $cmd) {
-        Write-Host "ERROR: copilot executable not found" -ForegroundColor Red
-        Write-Host "Please install GitHub Copilot CLI:" -ForegroundColor Yellow
-        Write-Host "  npm install -g @github/copilot" -ForegroundColor Yellow
-        exit 1
+    # Initialize variables
+    $Script:copilotExecutable = Get-CopilotPath
+    Write-Host "Using copilot executable on $Script:copilotExecutable"
+    if (-not [string]::IsNullOrEmpty($Script:Model)) {
+        Write-Host "Using model $Script:Model"
     }
-    $Script:copilotModel = $Script:Model
-    $Script:prdPath = Join-Path -Path $absoluteWorkdir -ChildPath $Script:prdJson
-
+    
     # Validate prd.json
+    $Script:prdPath = Join-Path -Path $absoluteWorkdir -ChildPath $Script:prdJson
     if (-not (Test-Path -Path $Script:prdPath)) {
         Write-Host "prd.json not found at $($Script:prdPath)" -ForegroundColor Red
         exit 1
     }
+    Write-Host "Using user stories on file $Script:prdPath"
 
     # Ensure progress state files exist, if not create them
     $progressStatePath = Join-Path -Path $absoluteWorkdir -ChildPath "progress.txt"
@@ -237,7 +261,7 @@ function Main {
         Try {
             if (-not (Test-Path -Path $progressStatePath)) {
                 New-Item -Path $progressStatePath -ItemType File -Force | Out-Null
-                Write-Host "Created progress state file at $progressStatePath" -ForegroundColor White
+                Write-Host "Created progress state file at $progressStatePath"
             }
         }
         catch {
@@ -249,7 +273,7 @@ function Main {
     # Set Copilot Prompt for use in the main loop
     try {
         $Script:copilotPrompt = GetPromptText
-        Write-Host "Successfully set Copilot Prompt: $Script:copilotPrompt" -ForegroundColor White
+        Write-Host "Successfully set Copilot Prompt: $Script:copilotPrompt"
     }
     catch {
         Write-Host "Failed to set Copilot Prompt: $_" -ForegroundColor Red
@@ -273,9 +297,9 @@ function Main {
     
         # Build argument array for this attempt
         $extraArgs = if ($CopilotArgs) { $CopilotExtraArgs -split ' ' } else { @() }    
-        $argList = @('-p', $Script:copilotPrompt, '--model', $Script:copilotModel) + $extraArgs
+        $argList = @('-p', $Script:copilotPrompt, '--model', $Script:Model) + $extraArgs
 
-        Write-Host "Running Copilot with model $Script:copilotModel and prompt: $Script:copilotPrompt" -ForegroundColor Cyan
+        Write-Host "Running Copilot with model $Script:Model and prompt: $Script:copilotPrompt" -ForegroundColor Cyan
         Write-Host "Arguments: $($argList -join ' ')" -ForegroundColor Cyan
 
         # Execute Copilot command and capture output and errors
@@ -323,7 +347,7 @@ function Main {
         -AttemptTimings $attemptTimings `
         -AllTasksComplete $allTasksComplete `
         -FinalExitCode $returnCode `
-        -Model $Script:copilotModel `
+        -Model $Script:Model `
         -MaxAttempts $Script:Max
 
     exit 0
