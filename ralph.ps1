@@ -20,8 +20,6 @@ Write-Debug "  - Model: '$Model'"
 Write-Debug "  - prdJson: '$prdJson'"
 Write-Debug "  - Force: $Force"
 
-Set-StrictMode -Version Latest
-
 # Clear console
 try {
     Write-Debug "[INIT] Attempting to clear console"
@@ -282,7 +280,7 @@ function Show-ExecutionReport {
     Write-Host ""
 }
 
-function Get-CopilotPath {
+function ValidateCopilotPath {
     [CmdletBinding()]
     param()
 
@@ -351,10 +349,9 @@ function Main {
     Write-Debug "[Main] Getting Copilot path"
 
     try {
-        $Script:copilotCmd = Get-CopilotPath
-        Write-Host "[SUCCESS] GitHub Copilot CLI found at:" -ForegroundColor Green
+        $copilotCmd = ValidateCopilotPath
+        Write-Host "[INFO] GitHub Copilot CLI found at:"
         Write-Host "       $($Script:copilotCmd)"
-        Write-Debug "[Main] Copilot command path: '$($Script:copilotCmd)'"
     }
     catch {
         Write-Host "[ERROR] Failed to locate GitHub Copilot CLI" -ForegroundColor Red
@@ -482,8 +479,8 @@ function Main {
         try {
             Write-Host "[INFO] Executing Copilot with model '$($Script:Model)'"
             Write-Host "[INFO] Command line "
-            Write-Host "    $Script:copilotCmd $($argList -join ' ')"
-            & $Script:copilotCmd @argList
+            Write-Host "    copilot $($argList -join ' ')"
+            & copilot @argList
             $returnCode = $LASTEXITCODE
             
             if ($returnCode -eq 0) {
