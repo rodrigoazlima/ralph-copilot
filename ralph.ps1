@@ -1,4 +1,4 @@
-#requires -Version 5.1
+#!/usr/bin/env pwsh
 
 param(
     [string]$Prompt = "prompt.md",
