@@ -6,7 +6,7 @@ param(
     [string]$Workdir = ".",
     [string]$Model = "gpt-5-mini",
     [string]$prdJson = "prd.json",
-    [string]$CopilotArguments = "--yolo --no-ask-user --autopilot --allow-all-paths -allow-all-tools",
+    [string]$CopilotArguments = "--yolo --no-ask-user --autopilot --allow-all-paths --allow-all-tools",
     [switch]$Force,
     [switch]$Debug
 )
