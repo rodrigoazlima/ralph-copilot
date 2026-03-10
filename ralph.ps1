@@ -201,37 +201,36 @@ function Show-ExecutionReport {
     Write-Debug "  - MaxAttempts: $MaxAttempts"
 
     Write-Host "`n" -NoNewline
-    Write-Host "================================================================================================" -ForegroundColor Cyan
-    Write-Host "====================================== EXECUTION REPORT ========================================" -ForegroundColor Cyan
-    Write-Host "================================================================================================" -ForegroundColor Cyan
+    Write-Host "================================================================================================"
+    Write-Host "====================================== EXECUTION REPORT ========================================"
+    Write-Host "================================================================================================"
     
     # Overall Status
-    Write-Host "`n[OVERALL STATUS]" -ForegroundColor Cyan
-    Write-Host "    Status:" -ForegroundColor Cyan
+    Write-Host "`n[OVERALL STATUS]"
     if ($AllTasksComplete) {
-        Write-Host "[SUCCESS] All user stories completed"
+        Write-Host "[SUCCESS] All user stories completed" -ForegroundColor Green
     }
     elseif ($TotalAttempts -ge $MaxAttempts) {
-        Write-Host "[WARNING] Maximum attempts reached"
+        Write-Host "[WARNING] Maximum attempts reached" -ForegroundColor Yellow
     }
     else {
-        Write-Host "[ERROR] Execution stopped early"
+        Write-Host "[ERROR] Execution stopped early" -ForegroundColor Red
     }
     
     Write-Host "  Exit Code: $FinalExitCode"
 
     # Execution Benchmarks
     Write-Debug "[Show-ExecutionReport] Calculating timing statistics"
-    Write-Host "`n[EXECUTION BENCHMARKS]" - ForegroundColor White
-    Write-Host "  Total Duration: $($TotalDuration.Hours)h $($TotalDuration.Minutes)m $($TotalDuration.Seconds)s $($TotalDuration.Milliseconds)ms" -ForegroundColor Gray
+    Write-Host "`n[EXECUTION BENCHMARKS]"
+    Write-Host "  Total Duration: $($TotalDuration.Hours)h $($TotalDuration.Minutes)m $($TotalDuration.Seconds)s $($TotalDuration.Milliseconds)ms"
     Write-Debug "[Show-ExecutionReport] Total Duration: $($TotalDuration.TotalSeconds) seconds"
-    Write-Host "  Total Attempts: $TotalAttempts / $MaxAttempts" -ForegroundColor Gray
+    Write-Host "  Total Attempts: $TotalAttempts / $MaxAttempts"
     Write-Debug "[Show-ExecutionReport] Attempts ratio: $TotalAttempts/$MaxAttempts"
     if ($SuccessfulAttempts -gt 0) {
-        Write-Host "  Successful Attempts: $SuccessfulAttempts"
+        Write-Host "  Successful Attempts: $SuccessfulAttempts" -ForegroundColor Green
     }
     if ($FailedAttempts -gt 0) {
-        Write-Host "  Failed Attempts: $FailedAttempts"
+        Write-Host "  Failed Attempts: $FailedAttempts" -ForegroundColor Red
     }
     
     if ($TotalAttempts -gt 0) {
@@ -240,42 +239,46 @@ function Show-ExecutionReport {
         $maxTime = [timespan]::FromMilliseconds(($AttemptTimings |  Measure-Object -Maximum).Maximum)
         
         Write-Debug "[Show-ExecutionReport] Timing stats: Avg=$($avgTime.TotalSeconds)s, Min=$($minTime.TotalSeconds)s, Max=$($maxTime.TotalSeconds)s"
-        Write-Host "  Average Attempt: $($avgTime.Minutes)m $($avgTime.Seconds)s $($avgTime.Milliseconds)ms" -ForegroundColor Gray
+        Write-Host "  Average Attempt: $($avgTime.Minutes)m $($avgTime.Seconds)s $($avgTime.Milliseconds)ms"
         Write-Debug "[Show-ExecutionReport] Corrected average time format"
-        Write-Host "  Fastest Attempt: $($minTime.Minutes)m $($minTime.Seconds)s $($minTime.Milliseconds)ms" -ForegroundColor Gray
-        Write-Host "  Slowest Attempt: $($maxTime.Minutes)m $($maxTime.Seconds)s $($maxTime.Milliseconds)ms" -ForegroundColor Gray
+        Write-Host "  Fastest Attempt: $($minTime.Minutes)m $($minTime.Seconds)s $($minTime.Milliseconds)ms"
+        Write-Host "  Slowest Attempt: $($maxTime.Minutes)m $($maxTime.Seconds)s $($maxTime.Milliseconds)ms"
     }
 
     # Model Configuration
-    Write-Host "`n[CONFIGURATION]" 
-    Write-Host "  Model: $Model" -ForegroundColor Gray
-    Write-Host "  Working Directory: $absoluteWorkDir" -ForegroundColor Gray
+    Write-Host "`n[CONFIGURATION]"
+    Write-Host "  Model: $Model"
+    Write-Host "  Working Directory: $absoluteWorkDir"
 
     # User Stories Status
     Write-Debug "[Show-ExecutionReport] Calling Get-UserStoryStatus"
     $storyStatus = Get-UserStoryStatus
     Write-Debug "[Show-ExecutionReport] Got user story status: Total=$($storyStatus.TotalStories), Passed=$($storyStatus.Passedstories), Failed=$($storyStatus.Failedstories)"
-    Write-Host "`n[USER STORIES]" 
+    Write-Host "`n[USER STORIES]"
     Write-Host "  Total Stories: $($storyStatus.TotalStories)"
     if ($storyStatus.PassedStories -gt 0) {
-        Write-Host "  Passed: $($storyStatus.PassedStories)"
+        Write-Host "  Passed: $($storyStatus.PassedStories)" -ForegroundColor Green
     }
     if ($storyStatus.FailedStories -gt 0) {
-        Write-Host "  Failed: $($storyStatus.FailedStories)"
+        Write-Host "  Failed: $($storyStatus.FailedStories)" -ForegroundColor Red
     }
 
     
     if ($storyStatus.TotalStories -gt 0) {
         $completionRate = [math]::Round(($storyStatus.PassedStories / $storyStatus.TotalStories) * 100, 2)
         Write-Host "  Completion Rate: $completionRate%"
-        Write-Host "`n  Story Details:" -ForegroundColor Gray
+        Write-Host "`n  Story Details:"
         foreach ($story in $storyStatus.Stories) {
             $statusIcon = if ($story.Passes) { "[PASS]" } else { "[FAIL]" }
-            Write-Host "$statusIcon "
-            Write-Host "$($story.Id); $($story.Title)"
+            if ($story.Passes) {
+                Write-Host "$statusIcon" -ForegroundColor Green
+            } else {
+                Write-Host "$statusIcon" -ForegroundColor Red
+            }
+            Write-Host "$($story.Id): $($story.Title)"
         }
     }
-    Write-Host "`n================================================================================================" -ForegroundColor Cyan
+    Write-Host "`n================================================================================================"
     Write-Host ""
 }
 
@@ -307,8 +310,8 @@ function Get-CopilotPath {
 
     Write-Debug "No valid copilot command found after filtering"
     Write-Error "No valid Copilot command found outside IDE plugin paths."
-    Write-Error "Please install GitHub Copilot CLI:" -ForegroundColor Yellow
-    Write-Error "  > npm install -g @github/copilot" -ForegroundColor Yellow
+    Write-Error "Please install GitHub Copilot CLI:"
+    Write-Error "  > npm install -g @github/copilot"
     exit 1
 }
 
@@ -317,17 +320,17 @@ function Main {
     Write-Debug "[Main] Starting main function execution"
 
     Write-Host ""
-    Write-Host "  _____       _       _        _____            _ _       _   " -ForegroundColor Cyan
-    Write-Host " |  __ \     | |     | |      / ____|          (_) |     | |  " -ForegroundColor Cyan
-    Write-Host " | |__) |__ _| |_ __ | |__   | |     ___  _ __  _| | ___ | |_ " -ForegroundColor Cyan
-    Write-Host " |  _  // _` | | '_ \| '_ \ | |    / _ \| '_ \| | |/ _ \| __|" -ForegroundColor Cyan
-    Write-Host " | | \ \ (_| | | |_) | | | | | |___| (_) | |_) | | | (_) | |_ " -ForegroundColor Cyan
-    Write-Host " |_|  \_\__,_|_| .__/|_| |_|  \_____\___/| .__/|_|_|\___/ \__|" -ForegroundColor Cyan
-    Write-Host "               | |                       | |                  " -ForegroundColor Cyan
-    Write-Host "               |_|                       |_|                  " -ForegroundColor Cyan
+    Write-Host "  _____       _       _        _____            _ _       _   "
+    Write-Host " |  __ \     | |     | |      / ____|          (_) |     | |  "
+    Write-Host " | |__) |__ _| |_ __ | |__   | |     ___  _ __  _| | ___ | |_ "
+    Write-Host " |  _  // _` | | '_ \| '_ \ | |    / _ \| '_ \| | |/ _ \| __|"
+    Write-Host " | | \ \ (_| | | |_) | | | | | |___| (_) | |_) | | | (_) | |_ "
+    Write-Host " |_|  \_\__,_|_| .__/|_| |_|  \_____\___/| .__/|_|_|\___/ \__|"
+    Write-Host "               | |                       | |                  "
+    Write-Host "               |_|                       |_|                  "
     Write-Host ""
 
-    Write-Host "================================================================================================" -ForegroundColor DarkCyan
+    Write-Host "================================================================================================"
 
     # Validate current directory
     Write-Debug "[Main] Validating working directory"
@@ -349,19 +352,19 @@ function Main {
 
     try {
         $Script:copilotCmd = Get-CopilotPath
-        Write-Host "[SUCCESS] GitHub Copilot CLI found at:"
-        Write-Host "       $($Script:copilotCmd)" -ForegroundColor Cyan
+        Write-Host "[SUCCESS] GitHub Copilot CLI found at:" -ForegroundColor Green
+        Write-Host "       $($Script:copilotCmd)"
         Write-Debug "[Main] Copilot command path: '$($Script:copilotCmd)'"
     }
     catch {
         Write-Host "[ERROR] Failed to locate GitHub Copilot CLI" -ForegroundColor Red
-        Write-Host "[INFO] Please install with: npm install -g @github/copilot" -ForegroundColor Yellow
+        Write-Host "[INFO] Please install with: npm install -g @github/copilot"
         exit 1
     }
     
     if (-not [string]::IsNullOrEmpty($Script:Model)) {
-        Write-Host "[INFO] AI Model configured:" -ForegroundColor Cyan
-        Write-Host "         $Script:Model" -ForegroundColor Gray
+        Write-Host "[INFO] AI Model configured:"
+        Write-Host "         $Script:Model"
         Write-Debug "[Main] Model configured: '$($Script:Model)'"
     }
     
@@ -376,15 +379,14 @@ function Main {
         exit 1
     }
     
-    Write-Host "[INFO] PRD JSON file:" -ForegroundColor Cyan
-    Write-Host "       $($Script:prdPath)" -ForegroundColor Gray
+    Write-Host "[INFO] PRD JSON file:"
+    Write-Host "       $($Script:prdPath)"
     Write-Debug "[Main] PRD JSON validation PASSED - file exists"
 
     # Ensure progress state files exist, if not create them
     Write-Debug "[Main] Setting up progress state files"
     $progressStatePath = Join-Path -Path $absoluteWorkdir -ChildPath "progress.txt"
     Write-Host "[INFO] Progress tracking file:"
-    Write-Host "       $progressStatePath" -ForegroundColor Cyan
     
     if ($Force) {
         Write-Debug "[Main] Force flag set, resetting progress state"
@@ -392,11 +394,11 @@ function Main {
             Remove-Item -Path $progressStatePath -Force -ErrorAction SilentlyContinue
             Write-Debug "[Main] Removed existing progress state file"
             New-Item -Path $progressStatePath -ItemType File -Force | Out-Null
-            Write-Host "[WARNING] Progress tracking reset due to -Force flag"
+            Write-Host "[WARNING] Progress tracking reset due to -Force flag" -ForegroundColor Yellow
             Write-Debug "[Main] Created new empty progress state file"
         }
         catch {
-            Write-Host "[ERROR] Failed to reset progress state: $_"
+            Write-Host "[ERROR] Failed to reset progress state: $_" -ForegroundColor Red
             Write-Debug "[Main] Failed to reset progress state: $_"
             exit 1
         }
@@ -406,7 +408,7 @@ function Main {
         Try {
             if (-not (Test-Path -Path $progressStatePath)) {
                 New-Item -Path $progressStatePath -ItemType File -Force | Out-Null
-                Write-Host "[SUCCESS] Progress tracking file created"
+                Write-Host "[SUCCESS] Progress tracking file created" -ForegroundColor Green
                 Write-Debug "[Main] Created new progress state file"
             }
             else {
@@ -414,7 +416,7 @@ function Main {
             }
         }
         catch {
-            Write-Host "[ERROR] Failed to create state files: $_"
+            Write-Host "[ERROR] Failed to create state files: $_" -ForegroundColor Red
             Write-Debug "[Main] Failed to create state files: $_"
             exit 1
         }
@@ -425,17 +427,17 @@ function Main {
     
     try {
         $Script:copilotPrompt = GetPromptText
-        Write-Host "[SUCCESS] Copilot prompt loaded successfully"
+        Write-Host "[SUCCESS] Copilot prompt loaded successfully" -ForegroundColor Green
         if ($Script:copilotPrompt.Length -gt 60) {
-            Write-Host "       Prompt preview: $($Script:copilotPrompt.Substring(0, 57))..." -ForegroundColor Gray
+            Write-Host "       Prompt preview: $($Script:copilotPrompt.Substring(0, 57))..."
         }
         else {
-            Write-Host "       Prompt: $($Script:copilotPrompt)" -ForegroundColor Gray
+            Write-Host "       Prompt: $($Script:copilotPrompt)"
         }
         Write-Debug "[Main] Copilot prompt set successfully: '$($Script:copilotPrompt)'"
     }
     catch {
-        Write-Host "[ERROR] Failed to set Copilot Prompt: $_"
+        Write-Host "[ERROR] Failed to set Copilot Prompt: $_" -ForegroundColor Red
         Write-Debug "[Main] Failed to set Copilot prompt: $_"
         exit 1
     }
@@ -443,7 +445,7 @@ function Main {
     # Initialize execution tracking variables
     Write-Debug "[Main] Initializing execution tracking variables"
     $executionStartTime = Get-Date
-    Write-Host "[INFO] Starting Ralph execution with $($Script:Max) maximum attempts" -ForegroundColor Cyan
+    Write-Host "[INFO] Starting Ralph execution with $($Script:Max) maximum attempts"
     Write-Debug "[Main] Execution start time recorded: $($executionStartTime)"
     $returnCode = 0
     $returnErrorCodeCounter = 0
@@ -461,9 +463,9 @@ function Main {
         $progressPercent = [math]::Round(($attempt / $Script:Max) * 100)
         
         Write-Host ""
-        Write-Host "================================================================================================" -ForegroundColor DarkCyan
-        Write-Host "[ATTEMPT #$attempt / $($Script:Max)] ($progressPercent%)" -ForegroundColor Cyan
-        Write-Host "--------------------------------------------------------------------------------------------" -ForegroundColor DarkGray
+        Write-Host "================================================================================================"
+        Write-Host "[ATTEMPT #$attempt / $($Script:Max)] ($progressPercent%)"
+        Write-Host "--------------------------------------------------------------------------------------------"
         
         $attemptStartTime = Get-Date
         Write-Debug "[Main] Attempt start time recorded: $($attemptStartTime)"
@@ -478,24 +480,24 @@ function Main {
 
         # Execute Copilot command and capture output and errors
         try {
-            Write-Host "[INFO] Executing Copilot with model '$($Script:Model)'" -ForegroundColor Cyan
-            Write-Host "[INFO] Command line " -ForegroundColor Cyan
-            Write-Host "    $Script:copilotCmd $($argList -join ' ')" -ForegroundColor Cyan            
+            Write-Host "[INFO] Executing Copilot with model '$($Script:Model)'"
+            Write-Host "[INFO] Command line "
+            Write-Host "    $Script:copilotCmd $($argList -join ' ')"
             & $Script:copilotCmd @argList
             $returnCode = $LASTEXITCODE
             
             if ($returnCode -eq 0) {
-                Write-Host "[SUCCESS] Attempt #$attempt completed successfully"
+                Write-Host "[SUCCESS] Attempt #$attempt completed successfully" -ForegroundColor Green
                 Write-Debug "[Main] Copilot command executed successfully, exit code: $returnCode"
                 $successfulAttempts++
             }
             else {
-                Write-Host "[WARNING] Attempt #$attempt failed with exit code: $returnCode"
+                Write-Host "[WARNING] Attempt #$attempt failed with exit code: $returnCode" -ForegroundColor Yellow
                 Write-Debug "[Main] Copilot command failed with exit code: $returnCode"
             }
         }
         catch {
-            Write-Host "[ERROR] Failed to execute Copilot command: $_"
+            Write-Host "[ERROR] Failed to execute Copilot command: $_" -ForegroundColor Red
             Write-Debug "[Main] Exception during Copilot execution: $_"
             $returnCode = 1
         }
@@ -505,10 +507,10 @@ function Main {
         $attemptDuration = [math]::Round(($attemptEndTime - $attemptStartTime).TotalMilliseconds)
     
         if ($attemptDuration -lt 1000) {
-            Write-Host "[INFO] Attempt duration: ${attemptDuration}ms" -ForegroundColor Gray
+            Write-Host "[INFO] Attempt duration: ${attemptDuration}ms"
         }
         else {
-            Write-Host "[INFO] Attempt duration: $([math]::Round($attemptDuration / 1000, 2))s" -ForegroundColor Gray
+            Write-Host "[INFO] Attempt duration: $([math]::Round($attemptDuration / 1000, 2))s"
         }
     
         if ($returnCode -eq 0) {
@@ -516,21 +518,21 @@ function Main {
         }
         else {
             $returnErrorCodeCounter++
-            Write-Host "[WARNING] Error counter incremented to: $returnErrorCodeCounter"
+            Write-Host "[WARNING] Error counter incremented to: $returnErrorCodeCounter" -ForegroundColor Yellow
             Write-Debug "[Main] Non-zero exit code ($returnCode), incrementing error counter to $returnErrorCodeCounter"
         }
 
         # Check if all tasks are complete
         if (Test-AllTasksComplete -Workdir $absoluteWorkdir) {
             Write-Host ""
-            Write-Host "[SUCCESS] All user stories completed! Exiting main loop."
+            Write-Host "[SUCCESS] All user stories completed! Exiting main loop." -ForegroundColor Green
             break
         }
         
         # Show remaining attempts info
         $remaining = $Script:Max - $attempt
         if ($remaining -gt 0) {
-            Write-Host "[INFO] Remaining attempts: $remaining" -ForegroundColor Cyan
+            Write-Host "[INFO] Remaining attempts: $remaining"
         }
         
         Write-Debug "[Main] Loop iteration $attempt completed, continuing to next iteration"
@@ -542,29 +544,33 @@ function Main {
     $totalDuration = [math]::Round(($executionEndTime - $executionStartTime).TotalSeconds)
     
     Write-Host ""
-    Write-Host "================================================================================================" -ForegroundColor DarkCyan
-    Write-Host "[EXECUTION COMPLETE]" -ForegroundColor Cyan
-    Write-Host "------------------------------------------------------------------------------------------------" -ForegroundColor DarkGray
+    Write-Host "================================================================================================"
+    Write-Host "[EXECUTION COMPLETE]"
+    Write-Host "------------------------------------------------------------------------------------------------"
     
     Write-Debug "[Main] Execution end time recorded: $($executionEndTime)"
     Write-Debug "[Main] Total duration calculated: $totalDuration seconds"
     Write-Debug "[Main] Successful attempts calculation: $successfulAttempts"
     
-    Write-Host "Total Attempts:" -ForegroundColor Cyan
-    Write-Host "  Executed:     $attempt" -ForegroundColor Gray
-    Write-Host "  Successful:   $successfulAttempts" -ForegroundColor Green
-    Write-Host "  Failed:       $returnErrorCodeCounter" -ForegroundColor $(if ($returnErrorCodeCounter -gt 0) { 'Red' } else { 'Gray' })
+    Write-Host "Total Attempts:"
+    Write-Host "  Executed:     $attempt"
+    if ($successfulAttempts -gt 0) {
+        Write-Host "  Successful:   $successfulAttempts" -ForegroundColor Green
+    }
+    if ($returnErrorCodeCounter -gt 0) {
+        Write-Host "  Failed:       $returnErrorCodeCounter" -ForegroundColor Red
+    }
     Write-Host ""
     
     if ($totalDuration -lt 60) {
-        Write-Host "Total Duration:" -ForegroundColor Cyan
-        Write-Host "  $totalDuration seconds" -ForegroundColor Gray
+        Write-Host "Total Duration:"
+        Write-Host "  $totalDuration seconds"
     }
     else {
         $minutes = [math]::Floor($totalDuration / 60)
         $seconds = $totalDuration % 60
-        Write-Host "Total Duration:" -ForegroundColor Cyan
-        Write-Host "  $minutes min $seconds sec" -ForegroundColor Gray
+        Write-Host "Total Duration:"
+        Write-Host "  $minutes min $seconds sec"
     }
     
     $allTasksComplete = Test-AllTasksComplete -Workdir $absoluteWorkdir
@@ -576,13 +582,13 @@ function Main {
     Write-Debug "[Main] Calling Show-ExecutionReport to display results"
     
     if ($allTasksComplete) {
-        Write-Host "[SUCCESS] All user stories completed!"
+        Write-Host "[SUCCESS] All user stories completed!" -ForegroundColor Green
     }
     elseif ($returnErrorCodeCounter -ge $Script:Max) {
-        Write-Host "[WARNING] Maximum attempts reached"
+        Write-Host "[WARNING] Maximum attempts reached" -ForegroundColor Yellow
     }
     else {
-        Write-Host "[ERROR] Execution stopped early"
+        Write-Host "[ERROR] Execution stopped early" -ForegroundColor Red
     }
     
     Show-ExecutionReport `
@@ -597,7 +603,7 @@ function Main {
         -MaxAttempts $Script:Max
 
     Write-Host ""
-    Write-Host "================================================================================================" -ForegroundColor DarkCyan
+    Write-Host "================================================================================================"
     Write-Debug "[Main] Execution report displayed, exiting with code 0"
     exit 0
 }
