@@ -6,8 +6,9 @@ param(
     [string]$Workdir = ".",
     [string]$Model = "gpt-5-mini",
     [string]$prdJson = "prd.json",
-    [string]$CopilotArguments = "--yolo --no-ask-user --autopilot --allow-all-paths -allow-all-tools ",
-    [switch]$Force
+    [string]$CopilotArguments = "--yolo --no-ask-user --autopilot --allow-all-paths -allow-all-tools",
+    [switch]$Force,
+    [switch]$Debug
 )
 
 Write-Debug "[INIT] PowerShell version: $($PSVersionTable.PSVersion)"
@@ -30,7 +31,9 @@ try {
 catch {
     Write-Debug "[INIT] Failed to clear console: $_"
 }
-
+if ($Debug) {
+    $DebugPreference = "Continue"
+}
 Write-Debug "[INIT] Setting script-level variables"
 $Script:Prompt = $Prompt
 $Script:Max = $Max
@@ -206,13 +209,13 @@ function Show-ExecutionReport {
     Write-Host "`n[OVERALL STATUS]" -ForegroundColor Cyan
     Write-Host "    Status:" -ForegroundColor Cyan
     if ($AllTasksComplete) {
-        Write-Host "SUCCESS - All user stories completed" -ForegroundColor Green
+        Write-Host "[SUCCESS] All user stories completed"
     }
     elseif ($TotalAttempts -ge $MaxAttempts) {
-        Write-Host "INCOMPLETE - Maximum attempts reached" -ForegroundColor Yellow
+        Write-Host "[WARNING] Maximum attempts reached"
     }
     else {
-        Write-Host "FAILED - Execution stopped early" -ForegroundColor Red
+        Write-Host "[ERROR] Execution stopped early"
     }
     
     Write-Host "  Exit Code: $FinalExitCode"
@@ -224,8 +227,12 @@ function Show-ExecutionReport {
     Write-Debug "[Show-ExecutionReport] Total Duration: $($TotalDuration.TotalSeconds) seconds"
     Write-Host "  Total Attempts: $TotalAttempts / $MaxAttempts" -ForegroundColor Gray
     Write-Debug "[Show-ExecutionReport] Attempts ratio: $TotalAttempts/$MaxAttempts"
-    Write-Host "  Successful Attempts: $SuccessfulAttempts" -ForegroundColor $(if ($SuccessfulAttempts -gt 0) { 'Green' } else { 'Gray' })
-    Write-Host "  Failed Attempts: $FailedAttempts" -ForegroundColor $(if ($FailedAttempts -gt 0) { 'Red' } else { 'Gray' })
+    if ($SuccessfulAttempts -gt 0) {
+        Write-Host "  Successful Attempts: $SuccessfulAttempts"
+    }
+    if ($FailedAttempts -gt 0) {
+        Write-Host "  Failed Attempts: $FailedAttempts"
+    }
     
     if ($TotalAttempts -gt 0) {
         $avgTime = [timespan]::FromMilliseconds(($AttemptTimings | Measure-Object -Average).Average)
@@ -249,20 +256,23 @@ function Show-ExecutionReport {
     $storyStatus = Get-UserStoryStatus
     Write-Debug "[Show-ExecutionReport] Got user story status: Total=$($storyStatus.TotalStories), Passed=$($storyStatus.Passedstories), Failed=$($storyStatus.Failedstories)"
     Write-Host "`n[USER STORIES]" 
-    Write-Host "  Total Stories: $($storyStatus.TotalStories)" -ForegroundColor Gray
-    Write-Host "  Passed: $($storyStatus. PassedStories)" -ForegroundColor Green
-    Write-Host "  Failed: $($storyStatus.FailedStories)" -ForegroundColor $(if ($storyStatus. FailedStories -gt 0) { 'Red' } else { 'Gray' })
+    Write-Host "  Total Stories: $($storyStatus.TotalStories)"
+    if ($storyStatus.PassedStories -gt 0) {
+        Write-Host "  Passed: $($storyStatus.PassedStories)"
+    }
+    if ($storyStatus.FailedStories -gt 0) {
+        Write-Host "  Failed: $($storyStatus.FailedStories)"
+    }
 
     
     if ($storyStatus.TotalStories -gt 0) {
         $completionRate = [math]::Round(($storyStatus.PassedStories / $storyStatus.TotalStories) * 100, 2)
-        Write-Host "  Completion Rate: $completionRate%" -ForegroundColor $(if ($completionRate -eq 100) { 'Green' } elseif ($completionRate -gt 50) { 'Yellow' } else { 'Red' })
+        Write-Host "  Completion Rate: $completionRate%"
         Write-Host "`n  Story Details:" -ForegroundColor Gray
         foreach ($story in $storyStatus.Stories) {
             $statusIcon = if ($story.Passes) { "[PASS]" } else { "[FAIL]" }
-            $statusColor = if ($story.Passes) { 'Green' } else { 'Red' }
-            Write-Host "$statusIcon " -NoNewline -ForegroundColor $statusColor
-            Write-Host "$($story.Id); $($story.Title)" -ForegroundColor Gray
+            Write-Host "$statusIcon "
+            Write-Host "$($story.Id); $($story.Title)"
         }
     }
     Write-Host "`n================================================================================================" -ForegroundColor Cyan
@@ -330,7 +340,7 @@ function Main {
         exit 1
     }
     
-    Write-Host "[INFO] Changed working directory to: $absoluteWorkdir" -ForegroundColor Green
+    Write-Host "[INFO] Changed working directory to: $absoluteWorkdir"
     Set-Location -Path $absoluteWorkdir
     Write-Debug "[Main] Current location set successfully"
 
@@ -339,8 +349,8 @@ function Main {
 
     try {
         $Script:copilotCmd = Get-CopilotPath
-        Write-Host "[INFO] GitHub Copilot CLI found at:" -ForegroundColor Green
-        Write-Host "       $($Script:copilotCmd)" -ForegroundColor Gray
+        Write-Host "[SUCCESS] GitHub Copilot CLI found at:"
+        Write-Host "       $($Script:copilotCmd)" -ForegroundColor Cyan
         Write-Debug "[Main] Copilot command path: '$($Script:copilotCmd)'"
     }
     catch {
@@ -373,8 +383,8 @@ function Main {
     # Ensure progress state files exist, if not create them
     Write-Debug "[Main] Setting up progress state files"
     $progressStatePath = Join-Path -Path $absoluteWorkdir -ChildPath "progress.txt"
-    Write-Host "[INFO] Progress tracking file:" -ForegroundColor Cyan
-    Write-Host "       $progressStatePath" -ForegroundColor Gray
+    Write-Host "[INFO] Progress tracking file:"
+    Write-Host "       $progressStatePath" -ForegroundColor Cyan
     
     if ($Force) {
         Write-Debug "[Main] Force flag set, resetting progress state"
@@ -382,11 +392,11 @@ function Main {
             Remove-Item -Path $progressStatePath -Force -ErrorAction SilentlyContinue
             Write-Debug "[Main] Removed existing progress state file"
             New-Item -Path $progressStatePath -ItemType File -Force | Out-Null
-            Write-Host "[INFO] Progress tracking reset due to -Force flag" -ForegroundColor Yellow
+            Write-Host "[WARNING] Progress tracking reset due to -Force flag"
             Write-Debug "[Main] Created new empty progress state file"
         }
         catch {
-            Write-Host "[ERROR] Failed to reset progress state: $_" -ForegroundColor Red
+            Write-Host "[ERROR] Failed to reset progress state: $_"
             Write-Debug "[Main] Failed to reset progress state: $_"
             exit 1
         }
@@ -396,7 +406,7 @@ function Main {
         Try {
             if (-not (Test-Path -Path $progressStatePath)) {
                 New-Item -Path $progressStatePath -ItemType File -Force | Out-Null
-                Write-Host "[INFO] Created new progress tracking file" -ForegroundColor Green
+                Write-Host "[SUCCESS] Progress tracking file created"
                 Write-Debug "[Main] Created new progress state file"
             }
             else {
@@ -404,7 +414,7 @@ function Main {
             }
         }
         catch {
-            Write-Host "[ERROR] Failed to create state files: $_" -ForegroundColor Red
+            Write-Host "[ERROR] Failed to create state files: $_"
             Write-Debug "[Main] Failed to create state files: $_"
             exit 1
         }
@@ -415,7 +425,7 @@ function Main {
     
     try {
         $Script:copilotPrompt = GetPromptText
-        Write-Host "[INFO] Copilot prompt loaded successfully" -ForegroundColor Green
+        Write-Host "[SUCCESS] Copilot prompt loaded successfully"
         if ($Script:copilotPrompt.Length -gt 60) {
             Write-Host "       Prompt preview: $($Script:copilotPrompt.Substring(0, 57))..." -ForegroundColor Gray
         }
@@ -425,7 +435,7 @@ function Main {
         Write-Debug "[Main] Copilot prompt set successfully: '$($Script:copilotPrompt)'"
     }
     catch {
-        Write-Host "[ERROR] Failed to set Copilot Prompt: $_" -ForegroundColor Red
+        Write-Host "[ERROR] Failed to set Copilot Prompt: $_"
         Write-Debug "[Main] Failed to set Copilot prompt: $_"
         exit 1
     }
@@ -470,22 +480,22 @@ function Main {
         try {
             Write-Host "[INFO] Executing Copilot with model '$($Script:Model)'" -ForegroundColor Cyan
             Write-Host "[INFO] Command line " -ForegroundColor Cyan
-            Write-Host "    $Script:copilotCmd @argList" -ForegroundColor Cyan
+            Write-Host "    $Script:copilotCmd $($argList -join ' ')" -ForegroundColor Cyan            
             & $Script:copilotCmd @argList
             $returnCode = $LASTEXITCODE
             
             if ($returnCode -eq 0) {
-                Write-Host "[SUCCESS] Attempt #$attempt completed successfully" -ForegroundColor Green
+                Write-Host "[SUCCESS] Attempt #$attempt completed successfully"
                 Write-Debug "[Main] Copilot command executed successfully, exit code: $returnCode"
                 $successfulAttempts++
             }
             else {
-                Write-Host "[FAILED] Attempt #$attempt failed with exit code: $returnCode" -ForegroundColor Red
+                Write-Host "[WARNING] Attempt #$attempt failed with exit code: $returnCode"
                 Write-Debug "[Main] Copilot command failed with exit code: $returnCode"
             }
         }
         catch {
-            Write-Host "[ERROR] Failed to execute Copilot command: $_" -ForegroundColor Yellow
+            Write-Host "[ERROR] Failed to execute Copilot command: $_"
             Write-Debug "[Main] Exception during Copilot execution: $_"
             $returnCode = 1
         }
@@ -506,14 +516,14 @@ function Main {
         }
         else {
             $returnErrorCodeCounter++
-            Write-Host "[INFO] Error counter incremented to: $returnErrorCodeCounter" -ForegroundColor Yellow
+            Write-Host "[WARNING] Error counter incremented to: $returnErrorCodeCounter"
             Write-Debug "[Main] Non-zero exit code ($returnCode), incrementing error counter to $returnErrorCodeCounter"
         }
 
         # Check if all tasks are complete
         if (Test-AllTasksComplete -Workdir $absoluteWorkdir) {
             Write-Host ""
-            Write-Host "[SUCCESS] All user stories completed! Exiting main loop." -ForegroundColor Green
+            Write-Host "[SUCCESS] All user stories completed! Exiting main loop."
             break
         }
         
@@ -566,13 +576,13 @@ function Main {
     Write-Debug "[Main] Calling Show-ExecutionReport to display results"
     
     if ($allTasksComplete) {
-        Write-Host "FINAL RESULT: SUCCESS - All user stories completed!" -ForegroundColor Green
+        Write-Host "[SUCCESS] All user stories completed!"
     }
     elseif ($returnErrorCodeCounter -ge $Script:Max) {
-        Write-Host "FINAL RESULT: INCOMPLETE - Maximum attempts reached" -ForegroundColor Yellow
+        Write-Host "[WARNING] Maximum attempts reached"
     }
     else {
-        Write-Host "FINAL RESULT: FAILED - Execution stopped early" -ForegroundColor Red
+        Write-Host "[ERROR] Execution stopped early"
     }
     
     Show-ExecutionReport `
