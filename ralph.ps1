@@ -269,9 +269,9 @@ function Show-ExecutionReport {
         foreach ($story in $storyStatus.Stories) {
             $statusIcon = if ($story.Passes) { "[PASS]" } else { "[FAIL]" }
             if ($story.Passes) {
-                Write-Host "$statusIcon" -ForegroundColor Green
+                Write-Host "$statusIcon" -ForegroundColor Green -NoNewline
             } else {
-                Write-Host "$statusIcon" -ForegroundColor Red
+                Write-Host "$statusIcon" -ForegroundColor Red -NoNewline
             }
             Write-Host "$($story.Id): $($story.Title)"
         }
