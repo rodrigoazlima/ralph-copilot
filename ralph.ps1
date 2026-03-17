@@ -8,31 +8,88 @@ param(
     [string]$prdJson = "prd.json",
     [string]$CopilotArguments = "--yolo --no-ask-user --autopilot --allow-all-paths --allow-all-tools",
     [switch]$Force,
-    [switch]$Debug
+    [switch]$Debug,
+    [string]$LogFile = "ralph.log"
 )
 
-Write-Debug "[INIT] PowerShell version: $($PSVersionTable.PSVersion)"
-Write-Debug "[INIT] Parameter values received:"
-Write-Debug "  - Prompt: '$Prompt'"
-Write-Debug "  - Max: $Max"
-Write-Debug "  - Workdir: '$Workdir'"
-Write-Debug "  - Model: '$Model'"
-Write-Debug "  - prdJson: '$prdJson'"
-Write-Debug "  - Force: $Force"
+# Logging configuration
+$Script:LogFilePath = $LogFile
+
+# Log function for centralized logging
+function Log {
+    [CmdletBinding()]
+    param(
+        [Parameter(Position = 0)]
+        [string]$Message,
+
+        [ValidateSet('Info', 'Warn', 'Error', 'Fatal', 'Success')]
+        [string]$Level = 'Info',
+
+        [int]$stack = 1
+    )
+
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss.fff"
+    $caller = (Get-PSCallStack)[$stack]  # [0] = this function, [1] = who called us
+
+    $function = if ($caller) { $caller.FunctionName } else { '<Script>' }
+    $line = if ($caller) { $caller.ScriptLineNumber } else { '?' }
+
+    $prefix = switch ($Level) {
+        'Info' { 'INFO ' }
+        'Success' { 'INFO' }
+        'Warn' { 'WARN ' }
+        'Error' { 'ERROR' }
+        'Fatal' { 'FATAL' }
+        default { '     ' }
+    }
+
+    $color = switch ($Level) {
+        'Info' { 'White' }
+        'Success' { 'Green' }
+        'Warn' { 'Yellow' }
+        'Error' { 'Red' }
+        'Fatal' { 'Magenta' }
+        default { 'Cyan' }
+    }
+    $consolePrefix = "$timestamp [$prefix] $($function):$($line) - "
+    Add-Content -Path $LogFile -Value "$consolePrefix$Message"
+    Write-Host $consolePrefix -ForegroundColor $Color -NoNewline
+    Write-Host $Message -ForegroundColor $color
+}
+
+function logInfo($msg, $l = 'Info') { Log $msg -Level $l -stack 2 }
+function LogSuccess($msg, $l = 'Success') { Log $msg -Level $l -stack 2 }
+function LogDebug($msg, $l = 'Debug') { 
+    Write-Debug $msg 
+    Add-Content -Path $Script:LogFilePath  -Value "$msg"
+    
+}
+function LogError($msg, $l = 'Error') { Log $msg -Level $l -stack 2 }
+function LogWarn($msg, $l = 'Warn') { Log $msg -Level $l -stack 2 }
+function LogFatal($msg, $l = 'Fatal') { Log $msg -Level $l -stack 2 }
+
+LogDebug "PowerShell version: $($PSVersionTable.PSVersion)" -Debug
+LogDebug "Parameter values received:" -Debug 
+LogDebug "  - Prompt: '$Prompt'" -Debug 
+LogDebug "  - Max: $Max" -Debug 
+LogDebug "  - Workdir: '$Workdir'" -Debug 
+LogDebug "  - Model: '$Model'" -Debug 
+LogDebug "  - prdJson: '$prdJson'" -Debug 
+LogDebug "  - Force: $Force" -Debug 
 
 # Clear console
 try {
-    Write-Debug "[INIT] Attempting to clear console"
+    LogDebug "Attempting to clear console"
     clear
-    Write-Debug "[INIT] Console cleared successfully"
+    LogDebug "Console cleared successfully"
 }
 catch {
-    Write-Debug "[INIT] Failed to clear console: $_"
+    LogDebug "Failed to clear console: $_"
 }
 if ($Debug) {
     $DebugPreference = "Continue"
 }
-Write-Debug "[INIT] Setting script-level variables"
+LogDebug "Setting script-level variables"
 $Script:Prompt = $Prompt
 $Script:Max = $Max
 $Script:Workdir = $Workdir
@@ -41,43 +98,43 @@ $Script:prdJson = $prdJson
 $Script:Force = $Force
 $Script:CopilotArguments = "$CopilotArguments --add-dir $Workdir"
 
-Write-Debug "[INIT] Script initialization complete. Script variables:"
-Write-Debug "  - Script:Prompt: '$($Script:Prompt)'"
-Write-Debug "  - Script:Max: $($Script:Max)"
-Write-Debug "  - Script:Workdir: '$($Script:Workdir)'"
-Write-Debug "  - Script:Model: '$($Script:Model)'"
-Write-Debug "  - Script:prdJson: '$($Script:prdJson)'"
-Write-Debug "  - Script:CopilotArguments: $($Script:CopilotArguments)"
-Write-Debug "  - Script:Force: $($Script:Force)"
+LogDebug "Script initialization complete. Script-level variables:"
+LogDebug "  - Script:Prompt: '$($Script:Prompt)'"
+LogDebug "  - Script:Max: $($Script:Max)"
+LogDebug "  - Script:Workdir: '$($Script:Workdir)'"
+LogDebug "  - Script:Model: '$($Script:Model)'"
+LogDebug "  - Script:prdJson: '$($Script:prdJson)'"
+LogDebug "  - Script:CopilotArguments: $($Script:CopilotArguments)"
+LogDebug "  - Script:Force: $($Script:Force)"
 
 function Get-UserStorystatus {
-    Write-Debug "[Get-UserStorystatus] Function called"
+    LogDebug "Function called"
     $prdPath = $Script:prdPath
-    Write-Debug "[Get-UserStorystatus] PRD Path: '$prdPath'"
+    LogDebug "PRD Path: '$prdPath'"
 
     if (-not (Test-Path $prdPath)) {
-        Write-Debug "[Get-UserStorystatus] PRD file not found at path"
+        LogDebug "PRD file not found at path"
         return @{
-            Totalstories  = 0
+            TotalStories  = 0
             PassedStories = 0
             FailedStories = 0
             Stories       = @()
-            AllComplete   = false 
+            AllComplete   = $false
         }
     }
 
-    Write-Debug "[Get-UserStorystatus] PRD file exists, reading content"
+    LogDebug "PRD file exists, reading content"
 
     try {
         $prdData = Get-Content -Path $prdPath -Raw | ConvertFrom-Json
-        Write-Host $prdData -ForegroundColor DarkGreen
-        Write-Debug "[Get-UserStorystatus] Successfully parsed PRD JSON"
-        Write-Debug "[Get-UserStorystatus] PRD Data: $($prdData | ConvertTo-Json)"
+        Log "$prdData"  -Color DarkGreen
+        LogDebug "Successfully parsed PRD JSON"
+        LogDebug "PRD Data: $($prdData | ConvertTo-Json)"
     }
     catch {
-        Write-Debug "[Get-UserStorystatus] Failed to parse PRD JSON: $_"
+        LogDebug "Failed to parse PRD JSON: $_"
         return @{
-            Totalstories  = 0
+            TotalStories  = 0
             PassedStories = 0
             FailedStories = 0
             Stories       = @()
@@ -86,60 +143,60 @@ function Get-UserStorystatus {
     }
 
     if (-not $prdData.userStories) {
-        Write-Debug "[Get-UserStorystatus] No userStories found in PRD data"
+        LogDebug "No userStories found in PRD data"
         return @{
             TotalStories  = 0
-            Passedstories = 0
+            PassedStories = 0
             FailedStories = 0
             Stories       = @()
             AllComplete   = $false
         }
     }
 
-    Write-Debug "[Get-UserStorystatus] Processing userStories. Count: $($prdData.userStories.Count)"
+    LogDebug "Processing userStories. Count: $($prdData.userStories.Count)"
 
     $stories = @()
     $passed = 0
     $failed = 0
     
-    Write-Debug "[Get-UserStorystatus] Starting story iteration loop"
+    LogDebug "Starting story iteration loop"
     
     foreach ($story in $prdData.userStories) {
-        Write-Debug "[Get-UserStorystatus] Processing story: Id=$($story.id), Title='$($story.title)'"
+        LogDebug "Processing story: Id=$($story.id), Title='$($story.title)'"
         
         $storyStatus = @{
             Id     = $story.id
             Title  = $story.title
             Passes = $story.passes -eq $true
         }
-        Write-Debug "[Get-UserStorystatus] Story status: Passes=$($storyStatus.Passes)"
+        LogDebug "Story status: Passes=$($storyStatus.Passes)"
         
         $stories += $storyStatus
 
         if ($story.passes -eq $true) {
             $passed++
-            Write-Debug "[Get-UserStorystatus] Story passed. Incrementing passed count to $passed"
+            LogDebug "Story passed. Incrementing passed count to $passed"
         }
         else {
             $failed++
-            Write-Debug "[Get-UserStorystatus] Story failed. Incrementing failed count to $failed"
+            LogDebug "Story failed. Incrementing failed count to $failed"
         }
     }
     
-    Write-Debug "[Get-UserStorystatus] Story iteration complete. Total stories: $($stories.Count), Passed: $passed, Failed: $failed"
+    LogDebug "Story iteration complete. Total stories: $($stories.Count), Passed: $passed, Failed: $failed"
     
     $totalStories = $stories.Count
     $allComplete = ($failed -eq 0 -and $totalStories -gt 0)
     
-    Write-Debug "[Get-UserStorystatus] Returning result:"
-    Write-Debug "  - TotalStories: $totalStories"
-    Write-Debug "  - PassedStories: $passed"
-    Write-Debug "  - FailedStories: $failed"
-    Write-Debug "  - Stories Count: $($stories.Count)"
-    Write-Debug "  - AllComplete: $allComplete"
+    LogDebug "Returning result:"
+    LogDebug "  - TotalStories: $totalStories"
+    LogDebug "  - PassedStories: $passed"
+    LogDebug "  - FailedStories: $failed"
+    LogDebug "  - Stories Count: $($stories.Count)"
+    LogDebug "  - AllComplete: $allComplete"
 
     return @{
-        Totalstories  = $totalStories
+        TotalStories  = $totalStories
         PassedStories = $passed
         FailedStories = $failed
         Stories       = $stories
@@ -152,27 +209,33 @@ function Test-AllTasksComplete {
         [string]$Workdir
     )
     
-    Write-Debug "[Test-AllTasksComplete] Function called"
+    LogDebug "Function called"
     $status = Get-UserStorystatus
-    Write-Debug "[Test-AllTasksComplete] User story status: AllComplete=$($status.AllComplete), TotalStories=$($status.Totalstories)"
+    LogDebug "User story status: AllComplete=$($status.AllComplete), TotalStories=$($status.TotalStories)"
     return $status.AllComplete
 }
 
 function GetPromptText {
-    Write-Debug "[GetPromptText] Function called"
-    Write-Debug "[GetPromptText] Script:Prompt = '$($Script:Prompt)', Workdir = '$Workdir'"
+    LogDebug "Function called"
+    LogDebug "Script:Prompt = '$($Script:Prompt)', Workdir = '$Workdir'"
     
     $promptPath = Join-Path -Path $Workdir -ChildPath [string]$Script:Prompt
-    Write-Debug "[GetPromptText] Constructed prompt path: '$promptPath'"
+    LogDebug "Constructed prompt path: '$promptPath'"
 
     if (-not (Test-Path $promptPath)) {
-        Write-Debug "[GetPromptText] Prompt file not found at '$promptPath', using inline prompt text"
-        return [string]$Prompt
+        LogDebug "Prompt file not found at '$promptPath', using inline prompt text"
+        return [string]$Script:Prompt
     }
     
-    Write-Debug "[GetPromptText] Reading prompt from file: '$promptPath'"
-    return Get-Content -Path $Script:prdPath -Raw
+    LogDebug "Reading prompt from file: '$promptPath'"
+    return Get-Content -Path $promptPath -Raw
 }
+
+# Color constants for logging
+$Script:ColorInfo = [ConsoleColor]::Cyan
+$Script:ColorSuccess = [ConsoleColor]::Green
+$Script:ColorWarning = [ConsoleColor]::Yellow
+$Script:ColorError = [ConsoleColor]::Red
 
 function Show-ExecutionReport {
     param(
@@ -187,48 +250,47 @@ function Show-ExecutionReport {
         [int]$MaxAttempts
     )
 
-    Write-Debug "[Show-ExecutionReport] Function called with parameters:"
-    Write-Debug "  - TotalDuration: $($TotalDuration.ToString())"
-    Write-Debug "  - TotalAttempts: $TotalAttempts"
-    Write-Debug "  - SuccessfulAttempts: $SuccessfulAttempts"
-    Write-Debug "  - FailedAttempts: $FailedAttempts"
-    Write-Debug "  - AttemptTimings Count: $($AttemptTimings.Count)"
-    Write-Debug "  - AllTasksComplete: $AllTasksComplete"
-    Write-Debug "  - FinalExitCode: $FinalExitCode"
-    Write-Debug "  - Model: '$Model'"
-    Write-Debug "  - MaxAttempts: $MaxAttempts"
+    LogDebug "Function called"
+    LogDebug "SuccessfulAttempts: $SuccessfulAttempts"
+    LogDebug "FailedAttempts: $FailedAttempts"
+    LogDebug "AttemptTimings Count: $($AttemptTimings.Count)"
+    LogDebug "AllTasksComplete: $AllTasksComplete"
+    LogDebug "FinalExitCode: $FinalExitCode"
+    LogDebug "Model: '$Model'"
+    LogDebug "MaxAttempts: $MaxAttempts"
 
-    Write-Host "`n" -NoNewline
-    Write-Host "================================================================================================"
-    Write-Host "====================================== EXECUTION REPORT ========================================"
-    Write-Host "================================================================================================"
+    Log "" 
+    Log "================================================================================================" 
+    Log "====================================== EXECUTION REPORT =======================================" 
+    Log "================================================================================================" 
     
     # Overall Status
-    Write-Host "`n[OVERALL STATUS]"
+    Log "" 
+    Log "====================================== EXECUTION REPORT =======================================" 
+    Log "================================================================================================" 
+    
+    Log "OVERALL STATUS" 
     if ($AllTasksComplete) {
-        Write-Host "[SUCCESS] All user stories completed" -ForegroundColor Green
+        LogSuccess "All user stories completed" 
     }
     elseif ($TotalAttempts -ge $MaxAttempts) {
-        Write-Host "[WARNING] Maximum attempts reached" -ForegroundColor Yellow
+        LogWarn "Maximum attempts reached" 
     }
     else {
-        Write-Host "[ERROR] Execution stopped early" -ForegroundColor Red
+        LogError "Execution stopped early" 
     }
     
-    Write-Host "  Exit Code: $FinalExitCode"
+    Log "  Exit Code: $FinalExitCode" 
 
     # Execution Benchmarks
-    Write-Debug "[Show-ExecutionReport] Calculating timing statistics"
-    Write-Host "`n[EXECUTION BENCHMARKS]"
-    Write-Host "  Total Duration: $($TotalDuration.Hours)h $($TotalDuration.Minutes)m $($TotalDuration.Seconds)s $($TotalDuration.Milliseconds)ms"
-    Write-Debug "[Show-ExecutionReport] Total Duration: $($TotalDuration.TotalSeconds) seconds"
-    Write-Host "  Total Attempts: $TotalAttempts / $MaxAttempts"
-    Write-Debug "[Show-ExecutionReport] Attempts ratio: $TotalAttempts/$MaxAttempts"
+    Log "EXECUTION BENCHMARKS" 
+    Log "  Total Duration: $($TotalDuration.Hours)h $($TotalDuration.Minutes)m $($TotalDuration.Seconds)s $($TotalDuration.Milliseconds)ms" 
+    Log "  Total Attempts: $TotalAttempts / $MaxAttempts" 
     if ($SuccessfulAttempts -gt 0) {
-        Write-Host "  Successful Attempts: $SuccessfulAttempts" -ForegroundColor Green
+        LogSuccess "  Successful Attempts: $SuccessfulAttempts" 
     }
     if ($FailedAttempts -gt 0) {
-        Write-Host "  Failed Attempts: $FailedAttempts" -ForegroundColor Red
+        LogError "  Failed Attempts: $FailedAttempts" 
     }
     
     if ($TotalAttempts -gt 0) {
@@ -236,48 +298,45 @@ function Show-ExecutionReport {
         $minTime = [timespan]::FromMilliseconds(($AttemptTimings | Measure-Object -Minimum).Minimum)
         $maxTime = [timespan]::FromMilliseconds(($AttemptTimings |  Measure-Object -Maximum).Maximum)
         
-        Write-Debug "[Show-ExecutionReport] Timing stats: Avg=$($avgTime.TotalSeconds)s, Min=$($minTime.TotalSeconds)s, Max=$($maxTime.TotalSeconds)s"
-        Write-Host "  Average Attempt: $($avgTime.Minutes)m $($avgTime.Seconds)s $($avgTime.Milliseconds)ms"
-        Write-Debug "[Show-ExecutionReport] Corrected average time format"
-        Write-Host "  Fastest Attempt: $($minTime.Minutes)m $($minTime.Seconds)s $($minTime.Milliseconds)ms"
-        Write-Host "  Slowest Attempt: $($maxTime.Minutes)m $($maxTime.Seconds)s $($maxTime.Milliseconds)ms"
+        LogDebug "Timing stats: Avg=$($avgTime.TotalSeconds)s, Min=$($minTime.TotalSeconds)s, Max=$($maxTime.TotalSeconds)s"
+        Log "  Average Attempt: $($avgTime.Minutes)m $($avgTime.Seconds)s $($avgTime.Milliseconds)ms" 
+        Log "  Fastest Attempt: $($minTime.Minutes)m $($minTime.Seconds)s $($maxTime.Milliseconds)ms" 
+        Log "  Slowest Attempt: $($maxTime.Minutes)m $($maxTime.Seconds)s $($maxTime.Milliseconds)ms" 
     }
 
     # Model Configuration
-    Write-Host "`n[CONFIGURATION]"
-    Write-Host "  Model: $Model"
-    Write-Host "  Working Directory: $absoluteWorkDir"
+    Log "CONFIGURATION" 
+    Log "  Model: $Model" 
+    Log "  Working Directory: $Workdir" 
 
     # User Stories Status
-    Write-Debug "[Show-ExecutionReport] Calling Get-UserStoryStatus"
-    $storyStatus = Get-UserStoryStatus
-    Write-Debug "[Show-ExecutionReport] Got user story status: Total=$($storyStatus.TotalStories), Passed=$($storyStatus.Passedstories), Failed=$($storyStatus.Failedstories)"
-    Write-Host "`n[USER STORIES]"
-    Write-Host "  Total Stories: $($storyStatus.TotalStories)"
-    if ($storyStatus.PassedStories -gt 0) {
-        Write-Host "  Passed: $($storyStatus.PassedStories)" -ForegroundColor Green
-    }
-    if ($storyStatus.FailedStories -gt 0) {
-        Write-Host "  Failed: $($storyStatus.FailedStories)" -ForegroundColor Red
-    }
-
-    
-    if ($storyStatus.TotalStories -gt 0) {
-        $completionRate = [math]::Round(($storyStatus.PassedStories / $storyStatus.TotalStories) * 100, 2)
-        Write-Host "  Completion Rate: $completionRate%"
-        Write-Host "`n  Story Details:"
-        foreach ($story in $storyStatus.Stories) {
-            $statusIcon = if ($story.Passes) { "[PASS]" } else { "[FAIL]" }
-            if ($story.Passes) {
-                Write-Host "$statusIcon" -ForegroundColor Green -NoNewline
-            } else {
-                Write-Host "$statusIcon" -ForegroundColor Red -NoNewline
+    Log "USER STORIES" 
+    if ($storyStatus -and $storyStatus.TotalStories) {
+        Log "  Total Stories: $($storyStatus.TotalStories)" 
+        if ($storyStatus.PassedStories -gt 0) {
+            LogSuccess "  Passed: $($storyStatus.PassedStories)" 
+        }
+        if ($storyStatus.FailedStories -gt 0) {
+            LogError "  Failed: $($storyStatus.FailedStories)" 
+        }
+        
+        if ($storyStatus.TotalStories -gt 0) {
+            $completionRate = [math]::Round(($storyStatus.PassedStories / $storyStatus.TotalStories) * 100, 2)
+            Log "  Completion Rate: $completionRate%" 
+            Log "  Story Details:" 
+            foreach ($story in $storyStatus.Stories) {
+                $statusIcon = if ($story.Passes) { "PASS" } else { "FAIL" }
+                if ($story.Passes) {
+                    LogSuccess "$statusIcon" 
+                }
+                else {
+                    LogError "$statusIcon" 
+                }
+                Log "$($story.Id): $($story.Title)" 
             }
-            Write-Host "$($story.Id): $($story.Title)"
         }
     }
-    Write-Host "`n================================================================================================"
-    Write-Host ""
+    Log "`n================================================================================================" 
 }
 
 function ValidateCopilotPath {
@@ -286,253 +345,258 @@ function ValidateCopilotPath {
 
     $invalidPattern = "\\Code\\|vscode|visual studio code|intellij|jetbrains|pycharm|webstorm|rider|clion|goland"
 
-    Write-Debug "Searching copilot command using where.exe"
+    LogDebug "Searching copilot command using where.exe"
 
     $paths = where.exe copilot 2>$null
 
     if (-not $paths) {
-        Write-Debug "No copilot command returned by where.exe"
+        LogDebug "No copilot command returned by where.exe"
+        return
     }
 
     foreach ($p in $paths) {
-        Write-Debug "Candidate path detected: $p"
+        LogDebug "Candidate path detected: $p"
 
         if ($p -match $invalidPattern) {
-            Write-Debug "Rejected path (IDE plugin detected): $p"
+            LogDebug "Rejected path (IDE plugin detected): $p"
             continue
         }
 
-        Write-Debug "Accepted copilot path: $p"
+        LogDebug "Accepted copilot path: $p"
         return $p
     }
 
-    Write-Debug "No valid copilot command found after filtering"
-    Write-Error "No valid Copilot command found outside IDE plugin paths."
-    Write-Error "Please install GitHub Copilot CLI:"
-    Write-Error "  > npm install -g @github/copilot"
-    exit 1
+    LogDebug "No valid copilot command found after filtering"
 }
 
 function Main {
-    Write-Debug "[Main] Function called"
-    Write-Debug "[Main] Starting main function execution"
+    LogDebug "Function called"
+    LogDebug "Starting main function execution"
 
-    Write-Host ""
-    Write-Host "  _____       _       _        _____            _ _       _   "
-    Write-Host " |  __ \     | |     | |      / ____|          (_) |     | |  "
-    Write-Host " | |__) |__ _| |_ __ | |__   | |     ___  _ __  _| | ___ | |_ "
-    Write-Host " |  _  // _` | | '_ \| '_ \ | |    / _ \| '_ \| | |/ _ \| __|"
-    Write-Host " | | \ \ (_| | | |_) | | | | | |___| (_) | |_) | | | (_) | |_ "
-    Write-Host " |_|  \_\__,_|_| .__/|_| |_|  \_____\___/| .__/|_|_|\___/ \__|"
-    Write-Host "               | |                       | |                  "
-    Write-Host "               |_|                       |_|                  "
-    Write-Host ""
+    Log "" 
+    Log "  _____       _       _        _____            _ _       _   " 
+    Log " |  __ \     | |     | |      / ____|          (_) |     | |  " 
+    Log " | |__) |__ _| |_ __ | |__   | |     ___  _ __  _| | ___ | |_ " 
+    Log " |  _  // _` | | '_ \| '_ \ | |    / _ \| '_ \| | |/ _ \| __ |" 
+    Log " | | \ \ (_| | | |_) | | | | | |___| (_) | |_) | | | (_) | |_ " 
+    Log " |_|  \_\__,_|_| .__/|_| |_|  \_____\___/| .__/|_|_|\___/ \__|" 
+    Log "               | |                       | |                  " 
+    Log "               |_|                       |_|                  " 
 
-    Write-Host "================================================================================================"
+    Log "" 
+    Log "================================================================================================" 
 
     # Validate current directory
-    Write-Debug "[Main] Validating working directory"
+    LogDebug "Validating working directory"
     $absoluteWorkdir = [System.IO.Path]::GetFullPath((Join-Path -Path (Get-Location) -ChildPath $Workdir))
-    Write-Debug "[Main] Absolute working directory: '$absoluteWorkdir'"
+    LogDebug "Absolute working directory: '$absoluteWorkdir'"
     
     if (-not (Test-Path -Path $absoluteWorkdir)) {
-        Write-Host "[ERROR] Workdir path not found at '$absoluteWorkdir'" -ForegroundColor Red
-        Write-Debug "[Main] Working directory validation FAILED"
+        LogError "Workdir path not found at '$absoluteWorkdir'" 
+        LogDebug "Working directory validation FAILED"
         exit 1
     }
     
-    Write-Host "[INFO] Changed working directory to: $absoluteWorkdir"
+    Log "Changed working directory to: $absoluteWorkdir" 
     Set-Location -Path $absoluteWorkdir
-    Write-Debug "[Main] Current location set successfully"
+    LogDebug "Current location set successfully"
 
     # Initialize variables
-    Write-Debug "[Main] Getting Copilot path"
+    LogDebug "Getting Copilot path"
 
     try {
         $copilotCmd = ValidateCopilotPath
-        Write-Host "[INFO] GitHub Copilot CLI found at:"
-        Write-Host "       $($Script:copilotCmd)"
+        if ($copilotCmd) {
+            Log "GitHub Copilot CLI found at:" 
+            Log "       $($Script:copilotCmd)" 
+        }
+        else {
+            LogError "No valid Copilot command found outside IDE plugin paths." 
+            LogWarn "Please install with: npm install -g @github/copilot" 
+            exit 1
+        }
+        
+        if (-not [string]::IsNullOrEmpty($Script:Model)) {
+            Log "AI Model configured:" 
+            Log "         $Script:Model" 
+            LogDebug "Model configured: '$($Script:Model)'"
+        }
     }
     catch {
-        Write-Host "[ERROR] Failed to locate GitHub Copilot CLI" -ForegroundColor Red
-        Write-Host "[INFO] Please install with: npm install -g @github/copilot"
+        LogError "Failed to locate GitHub Copilot CLI" 
+        LogWarn "Please install with: npm install -g @github/copilot" 
         exit 1
-    }
-    
-    if (-not [string]::IsNullOrEmpty($Script:Model)) {
-        Write-Host "[INFO] AI Model configured:"
-        Write-Host "         $Script:Model"
-        Write-Debug "[Main] Model configured: '$($Script:Model)'"
     }
     
     # Validate prd.json
-    Write-Debug "[Main] Validating PRD JSON path"
+    LogDebug "Validating PRD JSON path"
     $Script:prdPath = Join-Path -Path $absoluteWorkdir -ChildPath $Script:prdJson
-    Write-Debug "[Main] PRD path constructed: '$($Script:prdPath)'"
+    LogDebug "PRD path constructed: '$($Script:prdPath)'"
     
     if (-not (Test-Path -Path $Script:prdPath)) {
-        Write-Host "[ERROR] PRD JSON file not found at '$($Script:prdPath)'" -ForegroundColor Red
-        Write-Debug "[Main] PRD JSON validation FAILED - file not found"
+        LogError "PRD JSON file not found at '$($Script:prdPath)'" 
+        LogDebug "PRD JSON validation FAILED - file not found"
         exit 1
     }
     
-    Write-Host "[INFO] PRD JSON file:"
-    Write-Host "       $($Script:prdPath)"
-    Write-Debug "[Main] PRD JSON validation PASSED - file exists"
+    Log "PRD JSON file:" 
+    Log "       $($Script:prdPath)" 
+    LogDebug "PRD JSON validation PASSED - file exists"
 
     # Ensure progress state files exist, if not create them
-    Write-Debug "[Main] Setting up progress state files"
+    LogDebug "Setting up progress state files"
     $progressStatePath = Join-Path -Path $absoluteWorkdir -ChildPath "progress.txt"
-    Write-Host "[INFO] Progress tracking file:"
+    Log "Progress tracking file:" 
     
     if ($Force) {
-        Write-Debug "[Main] Force flag set, resetting progress state"
+        LogDebug "Force flag set, resetting progress state"
         Try {
             Remove-Item -Path $progressStatePath -Force -ErrorAction SilentlyContinue
-            Write-Debug "[Main] Removed existing progress state file"
+            LogDebug "Removed existing progress state file"
             New-Item -Path $progressStatePath -ItemType File -Force | Out-Null
-            Write-Host "[WARNING] Progress tracking reset due to -Force flag" -ForegroundColor Yellow
-            Write-Debug "[Main] Created new empty progress state file"
+            LogWarn "Progress tracking reset due to -Force flag" 
+            LogDebug "Created new empty progress state file"
         }
         catch {
-            Write-Host "[ERROR] Failed to reset progress state: $_" -ForegroundColor Red
-            Write-Debug "[Main] Failed to reset progress state: $_"
+            LogError "Failed to reset progress state: $_" 
+            LogDebug "Failed to reset progress state: $_"
             exit 1
         }
     }
     else {
-        Write-Debug "[Main] Force flag not set, checking for existing progress state"
+        LogDebug "Force flag not set, checking for existing progress state"
         Try {
             if (-not (Test-Path -Path $progressStatePath)) {
                 New-Item -Path $progressStatePath -ItemType File -Force | Out-Null
-                Write-Host "[SUCCESS] Progress tracking file created" -ForegroundColor Green
-                Write-Debug "[Main] Created new progress state file"
+                LogSuccess "Progress tracking file created" 
+                LogDebug "Created new progress state file"
             }
             else {
-                Write-Debug "[Main] Progress state file already exists"
+                LogDebug "Progress state file already exists"
             }
         }
         catch {
-            Write-Host "[ERROR] Failed to create state files: $_" -ForegroundColor Red
-            Write-Debug "[Main] Failed to create state files: $_"
+            LogError "Failed to create state files: $_" 
+            LogDebug "Failed to create state files: $_"
             exit 1
         }
     }
 
     # Set Copilot Prompt for use in the main loop
-    Write-Debug "[Main] Setting Copilot prompt"
+    LogDebug "Setting Copilot prompt"
     
     try {
         $Script:copilotPrompt = GetPromptText
-        Write-Host "[SUCCESS] Copilot prompt loaded successfully" -ForegroundColor Green
+        LogSuccess "Copilot prompt loaded successfully" 
         if ($Script:copilotPrompt.Length -gt 60) {
-            Write-Host "       Prompt preview: $($Script:copilotPrompt.Substring(0, 57))..."
+            Log "       Prompt preview: $($Script:copilotPrompt.Substring(0, 57))..." 
         }
         else {
-            Write-Host "       Prompt: $($Script:copilotPrompt)"
+            Log "       Prompt: $($Script:copilotPrompt)" 
         }
-        Write-Debug "[Main] Copilot prompt set successfully: '$($Script:copilotPrompt)'"
+        LogDebug "Copilot prompt set successfully: '$($Script:copilotPrompt)'"
     }
     catch {
-        Write-Host "[ERROR] Failed to set Copilot Prompt: $_" -ForegroundColor Red
-        Write-Debug "[Main] Failed to set Copilot prompt: $_"
+        LogError "Failed to set Copilot Prompt: $_" 
+        LogDebug "Failed to set Copilot prompt: $_"
         exit 1
     }
 
     # Initialize execution tracking variables
-    Write-Debug "[Main] Initializing execution tracking variables"
+    LogDebug "Initializing execution tracking variables"
     $executionStartTime = Get-Date
-    Write-Host "[INFO] Starting Ralph execution with $($Script:Max) maximum attempts"
-    Write-Debug "[Main] Execution start time recorded: $($executionStartTime)"
+    Log "Starting Ralph execution with $($Script:Max) maximum attempts" 
+    LogDebug "Execution start time recorded: $($executionStartTime)"
     $returnCode = 0
     $returnErrorCodeCounter = 0
     $attempt = 0
     $successfulAttempts = 0
     $attemptTimings = @()
-    Write-Debug "[Main] Tracking variables initialized. Max attempts: $($Script:Max)"
+    LogDebug "Tracking variables initialized. Max attempts: $($Script:Max)"
 
     # Main loop to interact with Copilot
-    Write-Debug "[Main] Entering main execution loop"
+    LogDebug "Entering main execution loop"
     while ($attempt -lt $Script:Max) {
-        Write-Debug "[Main] Loop condition check: attempt=$attempt, max=$($Script:Max)"
+        LogDebug "Loop condition check: attempt=$attempt, max=$($Script:Max)"
         
         $attempt++
         $progressPercent = [math]::Round(($attempt / $Script:Max) * 100)
         
-        Write-Host ""
-        Write-Host "================================================================================================"
-        Write-Host "[ATTEMPT #$attempt / $($Script:Max)] ($progressPercent%)"
-        Write-Host "--------------------------------------------------------------------------------------------"
+        Log "" 
+        Log "================================================================================================" 
+        Log "Attempt #$attempt / $($Script:Max)] ($progressPercent%)" 
+        Log "--------------------------------------------------------------------------------------------" 
         
         $attemptStartTime = Get-Date
-        Write-Debug "[Main] Attempt start time recorded: $($attemptStartTime)"
+        LogDebug "Attempt start time recorded: $($attemptStartTime)"
         
         # Build argument array for this attempt
-        Write-Debug "[Main] Building argument list for Copilot execution"
+        LogDebug "Building argument list for Copilot execution"
         $extraArgs = if ($Script:CopilotArguments) { $Script:CopilotArguments -split ' ' } else { @() }
-        Write-Debug "[Main] Extra args: $($extraArgs -join ', ')"
+        LogDebug "Extra args: $($extraArgs -join ', ')"
         
         $argList = @('-p', $Script:copilotPrompt, '--model', $Script:Model) + $extraArgs
-        Write-Debug "[Main] Full argument list: $($argList -join ' ')"
+        LogDebug "Full argument list: $($argList -join ' ')"
 
         # Execute Copilot command and capture output and errors
         try {
-            Write-Host "[INFO] Executing Copilot with model '$($Script:Model)'"
-            Write-Host "[INFO] Command line "
-            Write-Host "    copilot $($argList -join ' ')"
+            Log "Executing Copilot with model '$($Script:Model)'" 
+            Log "Command line:" 
+            Log "    copilot $($argList -join ' ')" 
             & copilot @argList
             $returnCode = $LASTEXITCODE
             
             if ($returnCode -eq 0) {
-                Write-Host "[SUCCESS] Attempt #$attempt completed successfully" -ForegroundColor Green
-                Write-Debug "[Main] Copilot command executed successfully, exit code: $returnCode"
+                LogSuccess "Attempt #$attempt completed successfully" 
+                LogDebug "Copilot command executed successfully, exit code: $returnCode"
                 $successfulAttempts++
             }
             else {
-                Write-Host "[WARNING] Attempt #$attempt failed with exit code: $returnCode" -ForegroundColor Yellow
-                Write-Debug "[Main] Copilot command failed with exit code: $returnCode"
+                LogWarn "Attempt #$attempt failed with exit code: $returnCode" 
+                LogDebug "Copilot command failed with exit code: $returnCode"
             }
         }
         catch {
-            Write-Host "[ERROR] Failed to execute Copilot command: $_" -ForegroundColor Red
-            Write-Debug "[Main] Exception during Copilot execution: $_"
+            LogError "Failed to execute Copilot command: $_" 
+            LogDebug "Exception during Copilot execution: $_"
             $returnCode = 1
         }
 
-        # Track attempt timming
+        # Track attempt timing
         $attemptEndTime = Get-Date
         $attemptDuration = [math]::Round(($attemptEndTime - $attemptStartTime).TotalMilliseconds)
+        $attemptTimings += $attemptDuration
     
         if ($attemptDuration -lt 1000) {
-            Write-Host "[INFO] Attempt duration: ${attemptDuration}ms"
+            Log "Attempt duration: ${attemptDuration}ms" 
         }
         else {
-            Write-Host "[INFO] Attempt duration: $([math]::Round($attemptDuration / 1000, 2))s"
+            Log "Attempt duration: $([math]::Round($attemptDuration / 1000, 2))s" 
         }
     
         if ($returnCode -eq 0) {
-            Write-Debug "[Main] Return code 0, incrementing successful attempts count to $successfulAttempts"
+            LogDebug "Return code 0, incrementing successful attempts count to $successfulAttempts"
         }
         else {
             $returnErrorCodeCounter++
-            Write-Host "[WARNING] Error counter incremented to: $returnErrorCodeCounter" -ForegroundColor Yellow
-            Write-Debug "[Main] Non-zero exit code ($returnCode), incrementing error counter to $returnErrorCodeCounter"
+            LogWarn "Error counter incremented to: $returnErrorCodeCounter" 
+            LogDebug "Non-zero exit code ($returnCode), incrementing error counter to $returnErrorCodeCounter"
         }
 
         # Check if all tasks are complete
         if (Test-AllTasksComplete -Workdir $absoluteWorkdir) {
-            Write-Host ""
-            Write-Host "[SUCCESS] All user stories completed! Exiting main loop." -ForegroundColor Green
+            Log "" 
+            LogSuccess "All user stories completed! Exiting main loop." 
             break
         }
         
         # Show remaining attempts info
         $remaining = $Script:Max - $attempt
         if ($remaining -gt 0) {
-            Write-Host "[INFO] Remaining attempts: $remaining"
+            Log "Remaining attempts: $remaining" 
         }
         
-        Write-Debug "[Main] Loop iteration $attempt completed, continuing to next iteration"
+        LogDebug "Loop iteration $attempt completed, continuing to next iteration"
         Start-Sleep -Seconds 10
     }
 
@@ -540,52 +604,54 @@ function Main {
     $executionEndTime = Get-Date
     $totalDuration = [math]::Round(($executionEndTime - $executionStartTime).TotalSeconds)
     
-    Write-Host ""
-    Write-Host "================================================================================================"
-    Write-Host "[EXECUTION COMPLETE]"
-    Write-Host "------------------------------------------------------------------------------------------------"
+    Log "" 
+    Log "================================================================================================" 
+    Log "EXECUTION COMPLETE" 
+    Log "------------------------------------------------------------------------------------------------" 
     
-    Write-Debug "[Main] Execution end time recorded: $($executionEndTime)"
-    Write-Debug "[Main] Total duration calculated: $totalDuration seconds"
-    Write-Debug "[Main] Successful attempts calculation: $successfulAttempts"
+    LogDebug "Execution end time recorded: $($executionEndTime)"
+    LogDebug "Total duration calculated: $totalDuration seconds"
+    LogDebug "Successful attempts calculation: $successfulAttempts"
     
-    Write-Host "Total Attempts:"
-    Write-Host "  Executed:     $attempt"
+    Log "Total Attempts:" 
+    Log "  Executed:     $attempt" 
     if ($successfulAttempts -gt 0) {
-        Write-Host "  Successful:   $successfulAttempts" -ForegroundColor Green
+        LogSuccess "  Successful:   $successfulAttempts" 
     }
     if ($returnErrorCodeCounter -gt 0) {
-        Write-Host "  Failed:       $returnErrorCodeCounter" -ForegroundColor Red
+        LogError "  Failed:       $returnErrorCodeCounter" 
     }
-    Write-Host ""
+    Log "" 
     
     if ($totalDuration -lt 60) {
-        Write-Host "Total Duration:"
-        Write-Host "  $totalDuration seconds"
+        Log "Total Duration:" 
+        Log "  $totalDuration seconds" 
     }
     else {
         $minutes = [math]::Floor($totalDuration / 60)
         $seconds = $totalDuration % 60
-        Write-Host "Total Duration:"
-        Write-Host "  $minutes min $seconds sec"
+        Log "Total Duration:" 
+        Log "  $minutes min $seconds sec" 
     }
     
     $allTasksComplete = Test-AllTasksComplete -Workdir $absoluteWorkdir
     
-    Write-Debug "[Main] Final tasks completion status: $allTasksComplete"
+    LogDebug "Final tasks completion status: $allTasksComplete"
 
     # Display comprehensive execution report
-    Write-Host ""
-    Write-Debug "[Main] Calling Show-ExecutionReport to display results"
+    Log "" 
+    $storyStatus = Get-UserStorystatus
+    
+    LogDebug "Calling Show-ExecutionReport to display results"
     
     if ($allTasksComplete) {
-        Write-Host "[SUCCESS] All user stories completed!" -ForegroundColor Green
+        LogSuccess "All user stories completed!" 
     }
     elseif ($returnErrorCodeCounter -ge $Script:Max) {
-        Write-Host "[WARNING] Maximum attempts reached" -ForegroundColor Yellow
+        LogWarn "Maximum attempts reached" 
     }
     else {
-        Write-Host "[ERROR] Execution stopped early" -ForegroundColor Red
+        LogError "Execution stopped early" 
     }
     
     Show-ExecutionReport `
@@ -593,15 +659,15 @@ function Main {
         -TotalAttempts $attempt `
         -SuccessfulAttempts $successfulAttempts `
         -FailedAttempts $returnErrorCodeCounter `
-        -AttemptTimings $attemptTimings `
+        -AttemptTimings @($attemptTimings) `
         -AllTasksComplete $allTasksComplete `
         -FinalExitCode $returnCode `
         -Model $Script:Model `
         -MaxAttempts $Script:Max
 
-    Write-Host ""
-    Write-Host "================================================================================================"
-    Write-Debug "[Main] Execution report displayed, exiting with code 0"
+    Log "" 
+    Log "================================================================================================" 
+    LogDebug "Execution report displayed, exiting with code 0"
     exit 0
 }
 
