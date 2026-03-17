@@ -68,14 +68,14 @@ function LogError($msg, $l = 'Error') { Log $msg -Level $l -stack 2 }
 function LogWarn($msg, $l = 'Warn') { Log $msg -Level $l -stack 2 }
 function LogFatal($msg, $l = 'Fatal') { Log $msg -Level $l -stack 2 }
 
-LogDebug "PowerShell version: $($PSVersionTable.PSVersion)" -Debug
-LogDebug "Parameter values received:" -Debug 
-LogDebug "  - Prompt: '$Prompt'" -Debug 
-LogDebug "  - Max: $Max" -Debug 
-LogDebug "  - Workdir: '$Workdir'" -Debug 
-LogDebug "  - Model: '$Model'" -Debug 
-LogDebug "  - prdJson: '$prdJson'" -Debug 
-LogDebug "  - Force: $Force" -Debug 
+LogDebug "PowerShell version: $($PSVersionTable.PSVersion)" 
+LogDebug "Parameter values received:"  
+LogDebug "  - Prompt: '$Prompt'"  
+LogDebug "  - Max: $Max"  
+LogDebug "  - Workdir: '$Workdir'"  
+LogDebug "  - Model: '$Model'"  
+LogDebug "  - prdJson: '$prdJson'"  
+LogDebug "  - Force: $Force"  
 
 # Clear console
 try {
@@ -524,7 +524,7 @@ function Main {
         
         Log "" 
         Log "================================================================================================" 
-        Log "Attempt #$attempt / $($Script:Max)] ($progressPercent%)" 
+        Log " [Attempt #$attempt / $($Script:Max)] ($progressPercent%)" 
         Log "--------------------------------------------------------------------------------------------" 
         
         $attemptStartTime = Get-Date
